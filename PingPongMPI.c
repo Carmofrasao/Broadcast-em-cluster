@@ -15,6 +15,8 @@ chronometer_t pingPongTime;
 
 // #define DEBUG 1
 
+// mpirun -np 2 --hostfile hostfile.txt ./PingPongMPI 2000 8000 2
+
 void verificaVetores( long ping[], long pong[], int ni )
 {
    static int twice = 0;
