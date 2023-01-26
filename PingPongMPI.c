@@ -13,7 +13,7 @@ int ni;			// tamanho do vetor contendo as mensagens
 
 chronometer_t pingPongTime;
 
-// #define DEBUG 1
+#define DEBUG 1
 
 // mpirun -np 8 --hostfile hostfile.txt ./PingPongMPI 2 32 8
 
@@ -125,14 +125,6 @@ int main(int argc, char *argv[]){
 			inmsg[i-1] = i;
 	}
 
-	#if DEBUG == 1
-		printf("Processo: %d, in\n", processId);
-		for(int i = 0; i < ni; i++){
-			printf("%ld ", inmsg[i]);
-		}
-		printf("\n");
-	#endif
-
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	if(processId == 0){
@@ -171,8 +163,10 @@ int main(int argc, char *argv[]){
 		MPI_Comm_rank( MPI_COMM_WORLD, &rank ); 
 
 		printf("rank %d: ", rank);
-		for(long int i = 1; i <= ni; i++)
-			printf("%ld ", inmsg[i-1]);
+		for(long int i = 0; i < 4; i++)
+			printf("%ld ", inmsg[i]);
+		for(long int i = ni-5; i < ni; i++)
+			printf("%ld ", inmsg[i]);
 		printf("\n");
 	#endif
 
