@@ -7,7 +7,7 @@
 long nmsg;       // o número total de mensagens
 long tmsg;       // o tamanho de cada mensagem
 int nproc;      // o número de processos MPI
-int par;        // opcional
+int raiz;       // maquina que ira enviar as mensagens
 int processId; 	// rank dos processos
 int ni;			// tamanho do vetor contendo as mensagens
 
@@ -15,7 +15,7 @@ chronometer_t pingPongTime;
 
 // #define DEBUG 1
 
-// mpirun -np 2 --hostfile hostfile.txt ./PingPongMPI 2000 8000 2
+// mpirun -np 8 --hostfile hostfile.txt ./PingPongMPI 2 32 8
 
 void verificaVetores( long ping[], long pong[], int ni )
 {
@@ -88,38 +88,26 @@ void verificaVetores( long ping[], long pong[], int ni )
 
 int main(int argc, char *argv[]){
 
-	par = 1;
+	raiz = 0;
 
 	if (argc < 4){
-		printf("usage: mpirun -np 2 %s <nmsg> <tmsg> <nproc> (<-bl> OU <-nbl>)\n",
+		printf("usage: mpirun -np <np> %s <nmsg> <tmsg> <nproc> (-r <r>)\n",
 			   argv[0]);
 		return 0;
 	}
 	else{
         nmsg = atoi(argv[1]);
-		if (nmsg % 2 != 0){
-			printf("usage: mpirun -np 2 %s <nmsg> <tmsg> <nproc> (<-bl> OU <-nbl>)\n",
-			   argv[0]);
-			printf("<nmsg> deve ser par\n");
-			return 0;
-		}
 		tmsg = atoi(argv[2]);
 		if (tmsg % 8 != 0){
-			printf("usage: mpirun -np 2 %s <nmsg> <tmsg> <nproc> (<-bl> OU <-nbl>)\n",
+			printf("usage: mpirun -np <np> %s <nmsg> <tmsg> <nproc> (-r <r>)\n",
 			   argv[0]);
 			printf("<tmsg> deve ser multiplo de 8\n");
 			return 0;
 		}
         nproc = atoi(argv[3]);
-        if (nproc != 2){
-            printf("usage: mpirun -np 2 %s <nmsg> <tmsg> <nproc> (<-bl> OU <-nbl>)\n",
-			   argv[0]);
-			printf("<nproc> deve ser 2\n");
-			return 0;
-        }
         if(argc == 5){
-            if (strcmp(argv[4], "-nbl") == 0)
-                par = 2;
+            if (strcmp(argv[3], "-r") == 0)
+                raiz = atoi(argv[4]);
         }
 	}
 
@@ -127,7 +115,6 @@ int main(int argc, char *argv[]){
 	MPI_Status Stat;
 
 	long int *inmsg = (long int*)calloc(ni, sizeof(long int));
-	long int *outmsg = (long int*)calloc(ni, sizeof(long int));
 
 	MPI_Init(&argc, &argv);
 	MPI_Comm_size(MPI_COMM_WORLD, &nproc);
@@ -137,18 +124,6 @@ int main(int argc, char *argv[]){
 		for(long int i = 1; i <= ni; i++)
 			inmsg[i-1] = i;
 	}
-	else {
-		long int i = ni + 1;
-		for(long int h = 0; h < ni; h++){
-			inmsg[h] = i;
-			i++;
-		}
-	}
-
-	if(processId == 0)
-		verificaVetores( inmsg, outmsg, ni );
-	else
-		verificaVetores( outmsg, inmsg, ni );
 
 	#if DEBUG == 1
 		printf("Processo: %d, in\n", processId);
@@ -165,52 +140,13 @@ int main(int argc, char *argv[]){
 		chrono_start(&pingPongTime);
 	}
 
-	if(par == 1){
-		int dest, source, rc, tag = 1;
-		if ( processId == 0 ) {
-			dest = 1;
-			source = 1;
-			for(int m = 0; m < nmsg/2; m++)
-				for(int i = 0; i < ni; i++){
-					rc = MPI_Send(&inmsg[i], 1, MPI_LONG, dest, tag, MPI_COMM_WORLD);
-					rc = MPI_Recv(&outmsg[i], 1, MPI_LONG, source, tag, MPI_COMM_WORLD, &Stat);
-				}
-		}
-		else if ( processId == 1 ) {
-			dest = 0;
-			source = 0;
-			for(int m = 0; m < nmsg/2; m++)
-				for(int i = 0; i < ni; i++){
-					rc = MPI_Recv(&outmsg[i], 1, MPI_LONG, source, tag, MPI_COMM_WORLD, &Stat);
-					rc = MPI_Send(&inmsg[i], 1, MPI_LONG, dest, tag, MPI_COMM_WORLD);	
-				}
-		}
-	}
-	else if(par == 2){
-		int next, prev, tag1=1, tag2=2, rc;
-		MPI_Request reqs[2];
-		MPI_Status stats[2];
-
-		if ( processId == 0 ) {
-			prev = 1;
-			next = 1;
-			for(int m = 0; m < nmsg/2; m++)
-				for(int i = 0; i < ni; i++){
-					rc = MPI_Isend(&inmsg[i], 1, MPI_LONG, next, tag2, MPI_COMM_WORLD, &reqs[1]);
-					MPI_Irecv(&outmsg[i], 1, MPI_LONG, prev, tag1, MPI_COMM_WORLD, &reqs[0]);
-					MPI_Waitall(2, reqs, stats);
-				}
-		}
-		else if ( processId == 1 ) {
-			prev = 0;
-			next = 0;
-			for(int m = 0; m < nmsg/2; m++)
-				for(int i = 0; i < ni; i++){
-					rc = MPI_Irecv(&outmsg[i], 1, MPI_LONG, prev, tag2, MPI_COMM_WORLD, &reqs[0]);
-					rc = MPI_Isend(&inmsg[i], 1, MPI_LONG, next, tag1, MPI_COMM_WORLD, &reqs[1]);
-					MPI_Waitall(2, reqs, stats);
-				}
-		}
+	int count = 1;
+	for(int i = 0; i < 8; i++){
+		for(int m = 0; m < nmsg; m++)
+			for(int i = 0; i < ni; i++){
+				MPI_Bcast(&inmsg[i], count, MPI_LONG, raiz, MPI_COMM_WORLD);
+			}
+		raiz = (raiz+i)%nproc;
 	}
 
 	MPI_Barrier(MPI_COMM_WORLD);
@@ -229,22 +165,18 @@ int main(int argc, char *argv[]){
 		double MBPS = ((double)(nmsg*tmsg) / ((double)total_time_in_seconds*1000*1000));
 		printf("Throughput: %lf MB/s\n", MBPS);
 	}
-
-	if(processId == 0)
-		verificaVetores( inmsg, outmsg, ni );
-	else
-		verificaVetores( outmsg, inmsg, ni );
 	
 	#if DEBUG == 1
-		printf("Processo: %d, out\n", processId);
-		for(int i = 0; i < ni; i++){
-			printf("%ld ", outmsg[i]);
-		}
+		int rank;
+		MPI_Comm_rank( MPI_COMM_WORLD, &rank ); 
+
+		printf("rank %d: ", rank);
+		for(long int i = 1; i <= ni; i++)
+			printf("%ld ", inmsg[i-1]);
 		printf("\n");
 	#endif
 
 	free(inmsg);
-	free(outmsg);
 
 	MPI_Finalize( );
 	return 0;
