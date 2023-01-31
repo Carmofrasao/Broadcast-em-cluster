@@ -13,7 +13,7 @@ int ni;			// tamanho do vetor contendo as mensagens
 
 chronometer_t pingPongTime;
 
-#define DEBUG 1
+#define DEBUG 0
 
 // mpirun -np 8 --hostfile hostfile.txt ./PingPongMPI 2 32 8
 
@@ -84,7 +84,17 @@ void verificaVetores( long ping[], long pong[], int ni )
    if( twice > 2 )
       fprintf(stderr, 
                "--------- rank %d, verificaVetores CALLED more than 2 times!!!\n", rank );     
-}          
+}        
+
+// int My_Bcast(long int *inmsg, int count, MPI_LONG, raiz, MPI_COMM_WORLD){
+
+// 	int rc;
+// 	long int *outmsg = (long int*)calloc(ni, sizeof(long int));
+
+// 	rc = MPI_Send(&inmsg[i], 1, MPI_LONG, dest, tag, MPI_COMM_WORLD);
+// 	rc = MPI_Recv(&outmsg[i], 1, MPI_LONG, source, tag, MPI_COMM_WORLD, &Stat);
+
+// }
 
 int main(int argc, char *argv[]){
 
@@ -133,13 +143,23 @@ int main(int argc, char *argv[]){
 	}
 
 	int count = 1;
-	for(int i = 0; i < 8; i++){
-		for(int m = 0; m < nmsg; m++)
-			for(int i = 0; i < ni; i++){
-				MPI_Bcast(&inmsg[i], count, MPI_LONG, raiz, MPI_COMM_WORLD);
-			}
-		raiz = (raiz+i)%nproc;
-	}
+	for(int m = 0; m < nmsg; m++)
+		for(int i = 0; i < ni; i++){
+			MPI_Bcast(&inmsg[i], count, MPI_LONG, raiz, MPI_COMM_WORLD);
+		}
+
+	// int dest, source, tag = 1;
+	// for(int i = 0; i < 8; i++){
+	// 	if ( processId == raiz ) {
+	// 		dest = 1;
+	// 		source = 1;
+	// 		for(int m = 0; m < nmsg; m++)
+	// 			for(int i = 0; i < ni; i++){
+	// 				My_Bcast(&inmsg[i], count, MPI_LONG, raiz, MPI_COMM_WORLD)
+	// 			}
+	// 	}
+	// 	raiz = (raiz+i)%nproc;
+	// }
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
@@ -155,7 +175,7 @@ int main(int argc, char *argv[]){
 		printf("total_time_in_seconds: %lf s\n", total_time_in_seconds);
 		printf("Latencia: %lf us/nmsg\n", (total_time_in_micro / nmsg)/2);
 		double MBPS = ((double)(nmsg*tmsg) / ((double)total_time_in_seconds*1000*1000));
-		printf("Throughput: %lf MB/s\n", MBPS);
+		printf("Throughput: %lf MB/s\n", MBPS*(nproc-1));
 	}
 	
 	#if DEBUG == 1
@@ -163,9 +183,9 @@ int main(int argc, char *argv[]){
 		MPI_Comm_rank( MPI_COMM_WORLD, &rank ); 
 
 		printf("rank %d: ", rank);
-		for(long int i = 0; i < 4; i++)
+		for(long int i = 0; i < 2; i++)
 			printf("%ld ", inmsg[i]);
-		for(long int i = ni-5; i < ni; i++)
+		for(long int i = ni-2; i < ni; i++)
 			printf("%ld ", inmsg[i]);
 		printf("\n");
 	#endif
