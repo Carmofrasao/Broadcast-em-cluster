@@ -93,7 +93,7 @@ void verificaVetores( long ping[], long pong[], int ni )
 
 // 	rc = MPI_Send(&inmsg[i], 1, MPI_LONG, dest, tag, MPI_COMM_WORLD);
 // 	rc = MPI_Recv(&outmsg[i], 1, MPI_LONG, source, tag, MPI_COMM_WORLD, &Stat);
-
+// 	raiz = (raiz+i)%nproc;
 // }
 
 int main(int argc, char *argv[]){
@@ -149,16 +149,13 @@ int main(int argc, char *argv[]){
 		}
 
 	// int dest, source, tag = 1;
-	// for(int i = 0; i < 8; i++){
-	// 	if ( processId == raiz ) {
-	// 		dest = 1;
-	// 		source = 1;
-	// 		for(int m = 0; m < nmsg; m++)
-	// 			for(int i = 0; i < ni; i++){
-	// 				My_Bcast(&inmsg[i], count, MPI_LONG, raiz, MPI_COMM_WORLD)
-	// 			}
-	// 	}
-	// 	raiz = (raiz+i)%nproc;
+	// if ( processId == raiz ) {
+	// 	dest = 1;
+	// 	source = 1;
+	// 	for(int m = 0; m < nmsg; m++)
+	// 		for(int i = 0; i < ni; i++){
+	// 			My_Bcast(&inmsg[i], count, MPI_LONG, raiz, MPI_COMM_WORLD)
+	// 		}
 	// }
 
 	MPI_Barrier(MPI_COMM_WORLD);
