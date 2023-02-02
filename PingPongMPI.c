@@ -13,7 +13,7 @@ int ni;			// tamanho do vetor contendo as mensagens
 
 chronometer_t pingPongTime;
 
-#define DEBUG 0
+#define DEBUG 1
 
 // mpirun -np 8 --hostfile hostfile.txt ./PingPongMPI 2 32 8
 
@@ -84,17 +84,102 @@ void verificaVetores( long ping[], long pong[], int ni )
    if( twice > 2 )
       fprintf(stderr, 
                "--------- rank %d, verificaVetores CALLED more than 2 times!!!\n", rank );     
-}        
+}     
 
-// int My_Bcast(long int *inmsg, int count, MPI_LONG, raiz, MPI_COMM_WORLD){
+int outro_log(int n){
+	double n_double = n;
+	int resultado = 0;
 
-// 	int rc;
-// 	long int *outmsg = (long int*)calloc(ni, sizeof(long int));
+	while(n_double > 1){
+		
+		resultado++;
+		n_double = n_double/2;
+	}
 
-// 	rc = MPI_Send(&inmsg[i], 1, MPI_LONG, dest, tag, MPI_COMM_WORLD);
-// 	rc = MPI_Recv(&outmsg[i], 1, MPI_LONG, source, tag, MPI_COMM_WORLD, &Stat);
-// 	raiz = (raiz+i)%nproc;
-// }
+	return resultado;
+
+}
+
+int pow2(int n){
+	
+	if(n == 0)
+		return 1;
+	else{
+	
+		int res = 1;
+
+		for(int i = 0; i < n; i++)
+			res *= 2;
+	
+		return res;
+	}
+}
+
+int desc_orig(){
+	
+	int distancia;
+
+	if(processId >= raiz)
+		distancia = processId - raiz;
+	else
+		distancia = processId - raiz + nproc;
+	
+	int fase = outro_log(distancia+1);
+
+	int result = pow2(fase-1);
+
+	int origem = (processId - result)%nproc;
+
+	if(origem < 0)
+		origem += nproc;
+
+	return origem;
+}
+
+int desc_dest(int fase){
+
+	return (pow2(fase) + processId) % nproc;
+
+}
+
+int desc_fase(){
+
+	int distancia;
+
+	if(processId >= raiz)
+		distancia = processId - raiz;
+	else
+		distancia = processId - raiz + nproc;
+
+	if(distancia == 0)
+		return 0;
+	else
+		return outro_log(distancia+1);
+
+}
+
+void My_Bcast(long int *buf, int count, MPI_Datatype tipo, MPI_Comm Comm){
+
+	int rc;
+	int orig, dest, num_fases, fase_ini;
+
+	num_fases = outro_log(nproc);
+
+	fase_ini = desc_fase();
+
+	orig = desc_orig();
+
+	MPI_Status Stat;
+
+	if(processId != raiz){
+		rc = MPI_Recv(buf, ni, tipo, orig, 0, Comm, &Stat);
+	}
+
+	for(int i = fase_ini; i < num_fases; i++){
+		dest = desc_dest(i);
+		rc = MPI_Send(buf, ni, tipo, dest, 0, Comm);
+	}
+}
 
 int main(int argc, char *argv[]){
 
@@ -130,7 +215,7 @@ int main(int argc, char *argv[]){
 	MPI_Comm_size(MPI_COMM_WORLD, &nproc);
 	MPI_Comm_rank(MPI_COMM_WORLD, &processId);
 
-	if(processId == 0){
+	if(processId == raiz){
 		for(long int i = 1; i <= ni; i++)
 			inmsg[i-1] = i;
 	}
@@ -142,21 +227,9 @@ int main(int argc, char *argv[]){
 		chrono_start(&pingPongTime);
 	}
 
-	int count = 1;
 	for(int m = 0; m < nmsg; m++)
-		for(int i = 0; i < ni; i++){
-			MPI_Bcast(&inmsg[i], count, MPI_LONG, raiz, MPI_COMM_WORLD);
-		}
-
-	// int dest, source, tag = 1;
-	// if ( processId == raiz ) {
-	// 	dest = 1;
-	// 	source = 1;
-	// 	for(int m = 0; m < nmsg; m++)
-	// 		for(int i = 0; i < ni; i++){
-	// 			My_Bcast(&inmsg[i], count, MPI_LONG, raiz, MPI_COMM_WORLD)
-	// 		}
-	// }
+		// MPI_Bcast(inmsg, ni, MPI_LONG, raiz, MPI_COMM_WORLD);
+		My_Bcast(inmsg, ni, MPI_LONG, MPI_COMM_WORLD);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
