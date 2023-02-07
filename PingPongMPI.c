@@ -3,6 +3,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include "chrono.c"
+#include <assert.h>
+
+#define USE_MPI_Bcast 1  // do NOT change
+#define USE_my_Bcast 2   // do NOT change
+//choose either BCAST_TYPE in the defines bellow
+//#define BCAST_TYPE USE_MPI_Bcast
+#define BCAST_TYPE USE_my_Bcast
+
+const int SEED = 100;
 
 long nmsg;       // o número total de mensagens
 long tmsg;       // o tamanho de cada mensagem
@@ -13,78 +22,9 @@ int ni;			// tamanho do vetor contendo as mensagens
 
 chronometer_t pingPongTime;
 
-#define DEBUG 1
+#define DEBUG 0
 
 // mpirun -np 8 --hostfile hostfile.txt ./PingPongMPI 2 32 8
-
-void verificaVetores( long ping[], long pong[], int ni )
-{
-   static int twice = 0;
-   int ping_ok = 1;
-   int pong_ok = 1;
-   int i, rank;
-      
-   MPI_Comm_rank( MPI_COMM_WORLD, &rank );   
-   
-   if( twice == 0 ) {
-  
-      if (rank == 0) {
-      
-          for( i=0; i<ni; i++ ) {
-            if( ping[i] != i+1 ) { ping_ok = 0; break; }
-            if( pong[i] != 0   ) { pong_ok = 0; break; }
-          }
-          if( !ping_ok )
-             fprintf(stderr, 
-               "--------- rank 0, initial value of ping[%d] = %ld (wrong!)\n", i, ping[i] );
-          if( !pong_ok )
-             fprintf(stderr, 
-               "--------- rank 0, initial value of pong[%d] = %ld (wrong!)\n", i, pong[i] );
-          if( ping_ok && pong_ok )
-             fprintf(stderr, 
-               "--------- rank 0, initial value of ping and pong are OK\n" );
-
-      } else if (rank == 1) {
-      
-          for( i=0; i<ni; i++ ) {
-            if( ping[i] != 0      ) { ping_ok = 0; break; }
-            if( pong[i] != i+ni+1 ) { pong_ok = 0; break; }
-          }
-          if( !ping_ok )
-             fprintf(stderr, 
-               "--------- rank 1, initial value of ping[%d] = %ld (wrong!)\n", i, ping[i] );
-          if( !pong_ok )
-             fprintf(stderr, 
-               "--------- rank 1, initial value of pong[%d] = %ld (wrong!)\n", i, pong[i] );
-          if( ping_ok && pong_ok )
-             fprintf(stderr, 
-               "--------- rank 1, initial values of ping and pong are OK\n" );
-      }          
-   }   // end twice == 0
-   
-   if( twice == 1 ) {
-  
-          for( i=0; i<ni; i++ ) {
-            if( ping[i] != i+1      ) { ping_ok = 0; break; }
-            if( pong[i] != i+ni+1   ) { pong_ok = 0; break; }
-          }
-          if( !ping_ok )
-             fprintf(stderr, 
-               "--------- rank %d, FINAL value of ping[%d] = %ld (wrong!)\n", rank, i, ping[i] );
-          if( !pong_ok )
-             fprintf(stderr, 
-               "--------- rank %d, FINAL value of pong[%d] = %ld (wrong!)\n", rank, i, pong[i] );
-          if( ping_ok && pong_ok )
-             fprintf(stderr, 
-               "--------- rank %d, FINAL values of ping and pong are OK\n", rank );
-
-   }  // end twice == 1
-   
-   ++twice;
-   if( twice > 2 )
-      fprintf(stderr, 
-               "--------- rank %d, verificaVetores CALLED more than 2 times!!!\n", rank );     
-}     
 
 int outro_log(int n){
 	double n_double = n;
@@ -158,7 +98,7 @@ int desc_fase(){
 
 }
 
-void My_Bcast(long int *buf, int count, MPI_Datatype tipo, MPI_Comm Comm){
+void My_Bcast(long int *buf, int count, MPI_Datatype tipo, int root, MPI_Comm Comm){
 
 	int rc;
 	int orig, dest, num_fases, fase_ini;
@@ -181,6 +121,49 @@ void My_Bcast(long int *buf, int count, MPI_Datatype tipo, MPI_Comm Comm){
 	}
 }
 
+void verifica_my_Bcast( void *buffer, int count, MPI_Datatype datatype,
+                        int root, MPI_Comm comm )
+{
+    int comm_size;
+    int my_rank;
+    
+    MPI_Comm_size( comm, &comm_size );
+    MPI_Comm_rank( comm, &my_rank );
+    static long *buff = (long *) calloc( count*comm_size, sizeof(long) );
+    
+    
+    // preenche a faixa do raiz com alguma coisa (apenas no raiz)
+    if( my_rank == root )
+       for( int i=0; i<count; i++ )
+          buff[ i ] = i+SEED;
+    
+    #if BCAST_TYPE == USE_MPI_Bcast
+       MPI_Bcast( buff, count, datatype, root, comm );
+    #elif BCAST_TYPE == USE_my_Bcast
+       My_Bcast( buff, count, datatype, root, comm );
+    #else
+       assert( BCAST_TYPE == USE_MPI_Bcast || BCAST_TYPE == USE_my_Bcast );
+    #endif   
+	   
+    
+    // cada nodo verifica se sua faixa recebeu adequadamente o conteudo
+    int ok=1;
+    int i;
+    for( i=0; i<count; i++ )
+       if( buff[ i ] != i+SEED ) {
+          ok = 0;
+          break;
+       }
+    // imprime na tela se OK ou nao
+    if( ok )
+        fprintf( stderr, "MY BCAST VERIF: node %d received ok\n", my_rank );
+    else
+        fprintf( stderr, "MY BCAST VERIF: node %d NOT ok! local position: %d contains %ld\n",
+                           my_rank, i, buff[i] );
+
+   free(buff);      
+}
+
 int main(int argc, char *argv[]){
 
 	raiz = 0;
@@ -200,9 +183,9 @@ int main(int argc, char *argv[]){
 			return 0;
 		}
         nproc = atoi(argv[3]);
-        if(argc == 5){
-            if (strcmp(argv[3], "-r") == 0)
-                raiz = atoi(argv[4]);
+        if(argc == 6){
+            if (strcmp(argv[4], "-r") == 0)
+                raiz = atoi(argv[5]);
         }
 	}
 
@@ -229,7 +212,7 @@ int main(int argc, char *argv[]){
 
 	for(int m = 0; m < nmsg; m++)
 		// MPI_Bcast(inmsg, ni, MPI_LONG, raiz, MPI_COMM_WORLD);
-		My_Bcast(inmsg, ni, MPI_LONG, MPI_COMM_WORLD);
+		My_Bcast(inmsg, ni, MPI_LONG, raiz, MPI_COMM_WORLD);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
@@ -259,6 +242,8 @@ int main(int argc, char *argv[]){
 			printf("%ld ", inmsg[i]);
 		printf("\n");
 	#endif
+
+	verifica_my_Bcast(inmsg, ni, MPI_LONG, raiz, MPI_COMM_WORLD);
 
 	free(inmsg);
 
